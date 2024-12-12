@@ -6,6 +6,7 @@ pipeline {
     environment {
         VENV_DIR = "${WORKSPACE}/venv"
         REPORT_FILE = "report.html"
+        GITHUB_TOKEN = credentials('github_token')  // Store your GitHub token in Jenkins credentials
     }
     stages {
         stage('Checkout Code') {
@@ -50,13 +51,25 @@ pipeline {
             }
             steps {
                 script {
-                    def GITHUB_REPO = 'karnarajbanshi/automated-tests' // Replace with your repo
-                    def PR_NUMBER = 'replace-with-pr-number' // Replace with the PR number or use Git logic
+                    // Authenticate with GitHub
                     sh """
-                        curl -X PUT -H "Authorization: token ${GITHUB_TOKEN}" \
-                            -d '{"merge_method": "squash"}' \
-                            https://api.github.com/repos/${GITHUB_REPO}/pulls/${PR_NUMBER}/merge
+                        gh auth login --with-token <<< "${GITHUB_TOKEN}"
                     """
+                    
+                    // Get the PR number dynamically using the branch name
+                    def PR_NUMBER = sh(script: """
+                        gh pr list --state open --head ${params.BRANCH} --json number -q '.[0].number'
+                    """, returnStdout: true).trim()
+                    
+                    if (PR_NUMBER) {
+                        echo "Found PR number: ${PR_NUMBER}"
+                        // Merge the PR using the GitHub CLI (squash and delete the branch after merge)
+                        sh """
+                            gh pr merge ${PR_NUMBER} --squash --delete-branch
+                        """
+                    } else {
+                        echo "No open PR found for branch: ${params.BRANCH}"
+                    }
                 }
             }
         }
