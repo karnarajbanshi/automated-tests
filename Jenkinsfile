@@ -9,6 +9,7 @@ pipeline {
         REPO_URL = 'https://github.com/karnarajbanshi/automated-tests.git' // Repository URL
         TEST_SCRIPT = 'tests/test_selenium_google.py' // Selenium test file path
         REPORT_FILE = 'report.html' // Test report file
+        PATH = "/home/jenkins/.local/bin:${env.PATH}" // Include pipx in PATH
     }
 
     stages {
