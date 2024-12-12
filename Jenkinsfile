@@ -33,27 +33,13 @@ pipeline {
                 '''
             }
         }
-
         stage('Run Selenium Tests') {
             steps {
                 echo 'Running Selenium tests in headless mode...'
                 sh '''
                 # Run the test script using pipx-managed Selenium
-                pipx run --spec selenium python ${TEST_SCRIPT} --html=${REPORT_FILE} --self-contained-html
+                pipx run --spec selenium python ${TEST_SCRIPT}
                 '''
-            }
-            post {
-                always {
-                    echo 'Archiving test results...'
-                    archiveArtifacts artifacts: "${REPORT_FILE}", fingerprint: true
-                }
-                success {
-                    echo 'Tests passed successfully!'
-                }
-                failure {
-                    echo 'Tests failed! Check the test report for details.'
-                    error 'Stopping pipeline due to test failure.'
-                }
             }
         }
 
