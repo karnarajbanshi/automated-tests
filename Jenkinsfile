@@ -1,90 +1,73 @@
 pipeline {
-    agent { label 'remote-node' } // Use the configured remote node
-
+    agent any
     parameters {
-        string(name: 'BRANCH', defaultValue: 'main', description: 'Branch to test') // Parameterized branch selection
+        string(name: 'BRANCH', defaultValue: 'main', description: 'Branch to test')
     }
-
     environment {
-        REPO_URL = 'https://github.com/karnarajbanshi/automated-tests.git' // Repository URL
-        TEST_SCRIPT = 'tests/test_selenium_google.py' // Selenium test file path
-        REPORT_FILE = 'report.html' // Test report file
-        PATH = "/home/jenkins/.local/bin:${env.PATH}" // Include pipx in PATH
+        VENV_DIR = "${WORKSPACE}/venv"
+        REPORT_FILE = "report.html"
     }
-
     stages {
         stage('Checkout Code') {
             steps {
                 echo 'Cloning repository...'
-                git branch: "${params.BRANCH}", url: "${REPO_URL}"
-            }
-        }
-
-        stage('Verify Selenium Installation') {
-            steps {
-                echo 'Checking if Selenium is installed...'
-                sh '''
-                if ! pipx list | grep selenium; then
-                    echo "Selenium not installed. Installing..."
-                    pipx install selenium
-                else
-                    echo "Selenium is already installed."
-                fi
-                '''
+                git branch: "${params.BRANCH}", url: 'https://github.com/karnarajbanshi/automated-tests.git'
             }
         }
         stage('Run Selenium Tests') {
             steps {
-                echo 'Running Selenium tests in headless mode...'
+                echo 'Setting up virtual environment...'
                 sh '''
-                # Run the test script using pipx-managed Selenium
-                pipx run --spec selenium python ${TEST_SCRIPT}
+                    python3 -m venv ${VENV_DIR}
+                    . ${VENV_DIR}/bin/activate
+                    pip install -r requirements.txt
+                '''
+                echo 'Running Selenium tests...'
+                sh '''
+                    . ${VENV_DIR}/bin/activate
+                    pytest --html=${REPORT_FILE} --self-contained-html
                 '''
             }
+            post {
+                always {
+                    echo 'Archiving test results...'
+                    archiveArtifacts artifacts: "${REPORT_FILE}", fingerprint: true
+                }
+                success {
+                    echo 'Tests passed successfully!'
+                }
+                failure {
+                    echo 'Tests failed! Check the test report for details.'
+                    error 'Stopping pipeline due to test failure.'
+                }
+            }
         }
-
         stage('Automate Merge') {
             when {
-                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' } // Run only if no failures occurred
+                expression {
+                    currentBuild.result == null || currentBuild.result == 'SUCCESS'
+                }
             }
             steps {
                 script {
-                    echo 'Automating code merge...'
-                    def GITHUB_REPO = 'karnarajbanshi/automated-tests' // Replace with your repository
-                    def BRANCH_TO_MERGE = "${params.BRANCH}"
-                    sh '''
-                    # Set Git user details
-                    git config user.name "Karna Rajbanshi"
-                    git config user.email "karnaraj05@gmail.com"
-
-                    # Fetch latest changes and merge the branch
-                    git fetch origin
-                    git checkout main
-                    git merge origin/${BRANCH_TO_MERGE}
-
-                    # Push changes back to the repository
-                    git push origin main
-                    '''
+                    def GITHUB_REPO = 'karnarajbanshi/automated-tests' // Replace with your repo
+                    def PR_NUMBER = 'replace-with-pr-number' // Replace with the PR number or use Git logic
+                    sh """
+                        curl -X PUT -H "Authorization: token ${GITHUB_TOKEN}" \
+                            -d '{"merge_method": "squash"}' \
+                            https://api.github.com/repos/${GITHUB_REPO}/pulls/${PR_NUMBER}/merge
+                    """
                 }
             }
         }
     }
-
     post {
-        always {
-            echo 'Cleaning up workspace...'
-            cleanWs() // Clean up the workspace after every build
-        }
         success {
             echo 'Pipeline executed successfully!'
         }
         failure {
-            echo 'Tests failed or merge conflicts detected. Notifying developer...'
-            mail to: 'karna.rajbanshi@yipl.com.np',
-                 subject: "Pipeline Failed: ${env.JOB_NAME}",
-                 body: "Build failed at stage: ${env.STAGE_NAME}. Check Jenkins for details."
+            echo 'Pipeline failed. Investigate the logs for details.'
         }
     }
 }
-
 
